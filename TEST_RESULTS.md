@@ -45,6 +45,25 @@
   honest v1 foundation — clean architecture, graceful failure, real Discord
   embeds — that gets meaningfully better the moment proxies are added.
 
+## Proxy attempt — 2026-10-02 ~23:20 PDT
+
+- Webshare free account created and email-verified (`janikdhadwar23@gmail.com`);
+  10 datacenter proxies active and wired into `.env` as `PROXIES`
+  (gitignored — secrets are never committed).
+- **Could not verify unblocking from this VM**: the runtime sandbox blocks raw
+  TCP connections to third-party proxies (`other_tcp: Deny`), so every
+  proxied request dies before leaving the machine. Direct (unproxied)
+  requests still work — that's how Costco/Amazon tested fine earlier.
+- The proxy code path itself is sound (pool loads all 10, round-robin
+  rotation confirmed); the block is environmental, not a code bug.
+- To actually verify Pokémon Center / Walmart unblocking: run the monitor on
+  an unsandboxed machine (your own PC — see README), or set Muse Settings →
+  Permissions → Direct network protocols → `other_tcp` to Ask and re-run
+  the proxied test here.
+- Honest expectation: these are *datacenter* proxies, and Pokémon Center's
+  CloudFront wall already blocks datacenter IPs. They may or may not get
+  through — residential proxies remain the reliable fix for PC specifically.
+
 ## Canadian retailers — 2026-10-02
 
 Environment: datacenter IP, zero proxies, same as above. New retailer keys
