@@ -93,14 +93,20 @@ def handle_result(result: ProductResult, state: dict, notifier: DiscordNotifier,
             notifier.send("out_of_stock", result)
         old_price, new_price = prev.get("price"), result.price
         old_f, new_f = _price_to_float(old_price), _price_to_float(new_price)
+        # Compare against the lowest price we've already alerted on, not just
+        # the last seen price: a flickering price (up then back down to the
+        # same value) must not re-fire the same drop.
+        alerted_f = _price_to_float(prev.get("price_drop_alerted") or old_price)
         if (old_price and new_price and old_f != float("inf")
-                and new_f != float("inf") and new_f < old_f):
-            notifier.send("price_drop", result, extra=f"{old_price} → {new_price}")
+                and new_f != float("inf") and new_f < min(old_f, alerted_f)):
+            if notifier.send("price_drop", result, extra=f"{old_price} → {new_price}"):
+                prev["price_drop_alerted"] = new_price
     state[result.url] = {
         "name": result.name,
         "retailer": result.retailer,
         "in_stock": result.in_stock,
         "price": result.price,
+        "price_drop_alerted": prev.get("price_drop_alerted"),
         "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
 
@@ -157,8 +163,14 @@ def main() -> None:
 
     pool = ProxyPool()
     print(f"[init] proxies configured: {len(pool)}")
+
+    baseline = not STATE_PATH.exists()
+    if baseline:
+        print("[init] no state.json — this pass records a silent baseline (no new-listing spam)")
+    state = load_state()
     notifier = DiscordNotifier(os.getenv("DISCORD_WEBHOOK_URL"),
-                               dry_run=args.dry_run, cooldown_sec=cooldown)
+                               dry_run=args.dry_run, cooldown_sec=cooldown,
+                               cooldowns=state.get("_cooldowns"))
     if notifier.dry_run:
         print("[init] dry-run mode: alerts print to console, nothing is posted")
 
@@ -170,11 +182,6 @@ def main() -> None:
     print(f"[init] tracking {len(products)} products")
     scrapers = {name: cls(pool) for name, cls in SCRAPERS.items()}
 
-    baseline = not STATE_PATH.exists()
-    if baseline:
-        print("[init] no state.json — this pass records a silent baseline (no new-listing spam)")
-    state = load_state()
-
     def run_pass() -> None:
         for product in products:
             retailer = product.get("retailer")
@@ -185,8 +192,10 @@ def main() -> None:
             result = check_one(scraper, product)
             handle_result(result, state, notifier, baseline)
             time.sleep(random.uniform(1.0, 3.0))  # politeness jitter between products
+        state["_cooldowns"] = notifier.cooldowns  # persist across --once restarts
         save_state(state)
-        print(f"[pass] done — state saved ({len(state)} urls tracked)")
+        n_urls = sum(1 for k in state if not k.startswith("_"))
+        print(f"[pass] done — state saved ({n_urls} urls tracked)")
 
     if args.once:
         run_pass()

@@ -3,7 +3,7 @@ import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict
 
 import requests
 
@@ -25,12 +25,15 @@ _STATUS_LABEL = {True: "In Stock ✅", False: "Out of Stock ❌", None: "Unknown
 
 class DiscordNotifier:
     def __init__(self, webhook_url=None, dry_run: bool = False, cooldown_sec: int = 1800,
-                 log_path=None):
+                 log_path=None, cooldowns=None):
         self.webhook_url = (webhook_url or "").strip() or None
         # No webhook configured => dry-run automatically.
         self.dry_run = dry_run or not self.webhook_url
         self.cooldown_sec = cooldown_sec
-        self._last_alert: Dict[Tuple[str, str], float] = {}
+        # "url|event" -> epoch seconds of last alert. May be seeded from
+        # persisted state so cooldowns survive --once restarts; the caller
+        # reads it back out (notifier.cooldowns) to persist again.
+        self.cooldowns: Dict[str, float] = dict(cooldowns or {})
         # Persistent audit log of every alert attempt (project root by default).
         self.log_path = Path(log_path) if log_path else (
             Path(__file__).resolve().parent.parent / "alerts.log")
@@ -53,11 +56,11 @@ class DiscordNotifier:
             pass  # logging must never break alerting
 
     def _cooldown_ok(self, url: str, event: str) -> bool:
-        key = (url, event)
+        key = f"{url}|{event}"
         now = time.time()
-        if now - self._last_alert.get(key, 0) < self.cooldown_sec:
+        if now - self.cooldowns.get(key, 0) < self.cooldown_sec:
             return False
-        self._last_alert[key] = now
+        self.cooldowns[key] = now
         return True
 
     def _post_with_retry(self, payload: dict) -> tuple:
