@@ -1,6 +1,8 @@
 """Discord webhook alerts: rich embeds, per-product cooldown, dry-run mode."""
+import json
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict, Tuple
 
 import requests
@@ -22,12 +24,33 @@ _STATUS_LABEL = {True: "In Stock ✅", False: "Out of Stock ❌", None: "Unknown
 
 
 class DiscordNotifier:
-    def __init__(self, webhook_url=None, dry_run: bool = False, cooldown_sec: int = 1800):
+    def __init__(self, webhook_url=None, dry_run: bool = False, cooldown_sec: int = 1800,
+                 log_path=None):
         self.webhook_url = (webhook_url or "").strip() or None
         # No webhook configured => dry-run automatically.
         self.dry_run = dry_run or not self.webhook_url
         self.cooldown_sec = cooldown_sec
         self._last_alert: Dict[Tuple[str, str], float] = {}
+        # Persistent audit log of every alert attempt (project root by default).
+        self.log_path = Path(log_path) if log_path else (
+            Path(__file__).resolve().parent.parent / "alerts.log")
+
+    def _log_alert(self, event_type: str, result, outcome: str) -> None:
+        """Append one JSON line to the alert audit log. Never raises."""
+        try:
+            entry = {
+                "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "event": event_type,
+                "retailer": result.retailer,
+                "name": result.name,
+                "price": result.price,
+                "url": result.url,
+                "outcome": outcome,
+            }
+            with open(self.log_path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry) + "\n")
+        except OSError:
+            pass  # logging must never break alerting
 
     def _cooldown_ok(self, url: str, event: str) -> bool:
         key = (url, event)
@@ -71,6 +94,7 @@ class DiscordNotifier:
             raise ValueError(f"unknown event_type: {event_type!r}")
         if not self._cooldown_ok(result.url, event_type):
             print(f"[cooldown] suppressed {event_type} for {result.url}")
+            self._log_alert(event_type, result, "cooldown-suppressed")
             return False
         fields = [
             {"name": "Status", "value": _STATUS_LABEL[result.in_stock], "inline": True},
@@ -95,10 +119,13 @@ class DiscordNotifier:
         if self.dry_run:
             print(f"[dry-run] {event_type.upper():<12} {result.retailer:<14} | {result.name} | "
                   f"stock={result.in_stock} price={result.price} sku={result.sku}")
+            self._log_alert(event_type, result, "dry-run")
             return True
         ok, reason = self._post_with_retry(payload)
         if not ok:
             print(f"[notifier] {reason}")
+            self._log_alert(event_type, result, f"failed: {reason}")
             return False
         print(f"[alert] {event_type} -> Discord: {result.name}")
+        self._log_alert(event_type, result, "sent")
         return True
