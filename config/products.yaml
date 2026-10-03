@@ -1,0 +1,87 @@
+# Tracked products. retailer must be one of:
+#   pokemoncenter | walmart | costco | amazon
+#   walmart_ca | costco_ca | amazon_ca        (Canadian sites, prices in CAD)
+# `verified: true` = URL confirmed as a real product page.
+# `verified: false` = placeholder — replace with a real URL before trusting it.
+products:
+  - retailer: pokemoncenter
+    name: "Pokémon TCG: 30th Celebration Pokémon Center Elite Trainer Box"
+    url: "https://www.pokemoncenter.com/en-ca/product/10-10447-111/pokemon-tcg-30th-celebration-pokemon-center-elite-trainer-box"
+    sku: "10-10447-111"
+    verified: true
+
+  - retailer: pokemoncenter
+    name: "Pokémon TCG: Mega Evolution—Delta Reign Pokémon Center Elite Trainer Box"
+    url: "https://www.pokemoncenter.com/product/10-10438-112/pokemon-tcg-mega-evolution-delta-reign-pokemon-center-elite-trainer-box"
+    sku: "10-10438-112"
+    verified: true
+
+  - retailer: walmart
+    name: "Pokémon TCG: Mega Evolution—Ascended Heroes Elite Trainer Box"
+    url: "https://www.walmart.com/ip/19629303589"
+    sku: "19629303589"
+    verified: true
+
+  - retailer: walmart
+    name: "Pokémon TCG: 30th Celebration Booster Bundle (2-Pack)"
+    url: "https://www.walmart.com/ip/21077661804"
+    sku: "21077661804"
+    verified: true
+
+  - retailer: costco
+    name: "Pokémon Scarlet & Violet—151 5-Pack Mini Tins"
+    url: "https://www.costco.com/p/-/pokemon-scarlet-violet-151-5-pack-mini-tins-electabuzz-scyther-magneton-dragonite-gengar/4000297877"
+    sku: "4000297877"
+    verified: true
+
+  - retailer: costco
+    name: "Pokémon 5-Pack Mini Tins, Galar Powers + 4 Promo Cards"
+    url: "https://www.costco.com/p/-/pokmon-5-pack-mini-tins-galar-powers-plus-4-promo-cards/4000092045"
+    sku: "4000092045"
+    verified: true
+
+  - retailer: amazon
+    name: "Pokémon TCG: Pokémon GO Elite Trainer Box"
+    url: "https://www.amazon.com/dp/B09ZKRTYHT"
+    sku: "B09ZKRTYHT"
+    verified: true
+
+  - retailer: amazon
+    name: "Pokémon TCG: Scarlet & Violet—Paldean Fates Elite Trainer Box"
+    url: "https://www.amazon.com/dp/B0CNFSY3Y3"
+    sku: "B0CNFSY3Y3"
+    verified: true
+
+  # --- Canadian retailers (prices in CAD) ---
+  - retailer: walmart_ca
+    name: "Pokémon TCG: Mega Evolution—Perfect Order Elite Trainer Box"
+    url: "https://www.walmart.ca/en/ip/Pokemon-Mega-Evolution-Perfect-Order-Elite-Trainer-Box/1S28YDYAT4HK"
+    sku: "1S28YDYAT4HK"
+    verified: true
+
+  - retailer: walmart_ca
+    name: "Pokémon TCG: 30th Celebration Elite Trainer Box"
+    url: "https://www.walmart.ca/en/ip/Pok-mon-TCG-30th-Celebration-Elite-Trainer-Box/59T63OIG4M6A"
+    sku: "59T63OIG4M6A"
+    verified: true
+
+  - retailer: amazon_ca
+    name: "Pokémon TCG: Mega Evolution—Perfect Order Elite Trainer Box"
+    url: "https://www.amazon.ca/dp/B0GFZV1ZVV"
+    sku: "B0GFZV1ZVV"
+    verified: true
+
+  - retailer: amazon_ca
+    name: "Pokémon TCG: Mega Evolution—Ascended Heroes Elite Trainer Box"
+    url: "https://www.amazon.ca/dp/B0G3CY83L5"
+    sku: "B0G3CY83L5"
+    verified: true
+
+  # costco_ca: no verified costco.ca Pokémon product URL found (2026-10-02).
+  # To enable it, search https://www.costco.ca for Pokémon TCG, copy a
+  # /p/ product URL, and replace the placeholder below.
+  - retailer: costco_ca
+    name: "Pokémon TCG (Costco Canada — replace with a real /p/ product URL)"
+    url: "https://www.costco.ca/"
+    sku: null
+    verified: false
