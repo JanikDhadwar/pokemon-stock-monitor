@@ -37,6 +37,34 @@ class DiscordNotifier:
         self._last_alert[key] = now
         return True
 
+    def _post_with_retry(self, payload: dict) -> tuple:
+        """POST the payload, retrying transient failures.
+
+        Up to 3 attempts with exponential backoff (1s, 2s) on network errors
+        and 5xx responses. 4xx responses fail fast — a 404/401 means the
+        webhook URL is wrong or deleted, and retrying won't help.
+        Returns (True, "") on success, (False, reason) on failure.
+        """
+        last_err = "unknown error"
+        for attempt in range(3):
+            try:
+                resp = requests.post(self.webhook_url, json=payload, timeout=15)
+            except requests.RequestException as exc:
+                last_err = f"network error: {exc}"
+            else:
+                if 200 <= resp.status_code < 300:
+                    return True, ""
+                if 400 <= resp.status_code < 500:
+                    return False, (
+                        f"Discord rejected the webhook (HTTP {resp.status_code}) — "
+                        "the webhook URL is probably wrong or the webhook was "
+                        "deleted in Discord's server settings."
+                    )
+                last_err = f"HTTP {resp.status_code} from Discord"
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+        return False, f"Discord POST failed after 3 attempts ({last_err})"
+
     def send(self, event_type: str, result, extra: str = "") -> bool:
         """Build and deliver (or print) the embed. Returns True if sent/printed."""
         if event_type not in COLORS:
@@ -68,11 +96,9 @@ class DiscordNotifier:
             print(f"[dry-run] {event_type.upper():<12} {result.retailer:<14} | {result.name} | "
                   f"stock={result.in_stock} price={result.price} sku={result.sku}")
             return True
-        try:
-            resp = requests.post(self.webhook_url, json=payload, timeout=15)
-            resp.raise_for_status()
-        except Exception as exc:
-            print(f"[notifier] Discord POST failed: {exc}")
+        ok, reason = self._post_with_retry(payload)
+        if not ok:
+            print(f"[notifier] {reason}")
             return False
         print(f"[alert] {event_type} -> Discord: {result.name}")
         return True
