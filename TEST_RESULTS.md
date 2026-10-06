@@ -80,3 +80,20 @@ Bottom line: the CA scaffolding is correct and follows the same graceful-failure
 pattern — nothing guesses. walmart.ca needs proxies like its US sibling,
 amazon.ca needs JS rendering for the buybox, costco.ca needs a real product
 URL first.
+
+## Live behavior — 2026-10-06 (upkeep pass)
+
+- **amazon.ca partial upgrade**: `amazon_ca` / `B0G3CY83L5` (Mega Evolution—
+  Ascended Heroes ETB) now returns a real signal from this VM: the
+  `#availability` span reads **"In Stock"** and the embedded `displayPrice`
+  is **$250.00 CAD** — two corroborating signals, no CAPTCHA, zero ld+json
+  blocks. The sibling product `B0GFZV1ZVV` still returns "no stock signal"
+  (spinner-era behavior), so availability varies per listing. The parser did
+  not hallucinate this: the page genuinely carries a buybox now.
+- **Price-drop spam fix is holding**: since the 2026-10-03 persistent-cooldown
+  fix, only **1 price-drop alert** has fired (Pokémon GO ETB, Oct 5) vs 12 in
+  ~4.5 hours on Oct 3. Follow-up 2026-10-06: price drops now also need to be
+  ≥$1 **and** ≥1% to ping, killing the remaining cent-level flicker alerts.
+- **Hosted check job** (`pokestock-monitor-check`, every 5 min) is healthy:
+  zero consecutive failures, latest state writes current (costco.com both
+  OutOfStock/$39.99, amazon.com both InStock).

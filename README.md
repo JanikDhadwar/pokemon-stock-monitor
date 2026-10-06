@@ -98,8 +98,11 @@ Each alert is a Discord message with a colored title:
 
 Every alert shows status, price, SKU / product number, retailer, a link to
 the product page, and the product image when available. To avoid spam, the
-same alert won't repeat for 30 minutes. If a send fails, it's retried
-automatically.
+same alert won't repeat for 30 minutes. Price drops also have a significance
+gate: a drop only pings when it's at least $1 **and** at least 1% below the
+reference price, so cent-level flickers on third-party listings stay quiet
+(tune with `MIN_PRICE_DROP_ABS` / `MIN_PRICE_DROP_PCT` in `.env`). If a send
+fails, it's retried automatically.
 
 ## Running it 24/7
 

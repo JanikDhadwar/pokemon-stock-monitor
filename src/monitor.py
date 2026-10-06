@@ -28,6 +28,13 @@ ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config" / "products.yaml"
 STATE_PATH = ROOT / "state.json"
 
+# Alert-quality gate: a price drop only earns a Discord ping when it is at
+# least this many dollars AND this percent below the reference price.
+# Third-party listings flicker by cents constantly; pocket-change moves are
+# noise, not deals. Both are env-overridable.
+MIN_PRICE_DROP_ABS = float(os.getenv("MIN_PRICE_DROP_ABS", "1.0"))
+MIN_PRICE_DROP_PCT = float(os.getenv("MIN_PRICE_DROP_PCT", "1.0"))
+
 PRODUCT_LINK_RE = re.compile(
     r'href="((?:/[a-z]{2}-[a-z]{2})?/product/[\w.\-]+/[\w.\-]+/?)"', re.IGNORECASE
 )
@@ -99,8 +106,21 @@ def handle_result(result: ProductResult, state: dict, notifier: DiscordNotifier,
         alerted_f = _price_to_float(prev.get("price_drop_alerted") or old_price)
         if (old_price and new_price and old_f != float("inf")
                 and new_f != float("inf") and new_f < min(old_f, alerted_f)):
-            if notifier.send("price_drop", result, extra=f"{old_price} → {new_price}"):
-                prev["price_drop_alerted"] = new_price
+            floor = min(old_f, alerted_f)
+            drop = floor - new_f
+            # Significance gate: pocket-change moves never ping. A drop must
+            # be at least MIN_PRICE_DROP_ABS dollars AND MIN_PRICE_DROP_PCT
+            # percent below the reference price. A suppressed drip does not
+            # move the floor, so the next pass re-measures against it —
+            # only a genuinely meaningful single-pass move fires.
+            if (drop >= MIN_PRICE_DROP_ABS
+                    and drop >= floor * MIN_PRICE_DROP_PCT / 100.0):
+                if notifier.send("price_drop", result,
+                                 extra=f"{old_price} → {new_price}"):
+                    prev["price_drop_alerted"] = new_price
+            else:
+                print(f"{tag} {result.name}: price dip {old_price} → {new_price} "
+                      f"below alert threshold, skipped")
     state[result.url] = {
         "name": result.name,
         "retailer": result.retailer,

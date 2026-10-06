@@ -31,9 +31,9 @@ def _state(price):
 
 def test_genuine_drop_alerts_and_records_low():
     n, state = StubNotifier(), _state("$521.64")
-    handle_result(_res("$520.69"), state, n, baseline=False)
-    assert n.sent == [("price_drop", "$520.69")]
-    assert state[URL]["price_drop_alerted"] == "$520.69"
+    handle_result(_res("$510.00"), state, n, baseline=False)
+    assert n.sent == [("price_drop", "$510.00")]
+    assert state[URL]["price_drop_alerted"] == "$510.00"
 
 
 def test_same_price_does_not_refire():
@@ -60,9 +60,9 @@ def test_new_low_below_alerted_price_fires():
     n = StubNotifier()
     state = _state("$520.69")
     state[URL]["price_drop_alerted"] = "$520.69"
-    handle_result(_res("$519.99"), state, n, baseline=False)
-    assert n.sent == [("price_drop", "$519.99")]
-    assert state[URL]["price_drop_alerted"] == "$519.99"
+    handle_result(_res("$514.00"), state, n, baseline=False)
+    assert n.sent == [("price_drop", "$514.00")]
+    assert state[URL]["price_drop_alerted"] == "$514.00"
 
 
 def test_cooldown_survives_across_notifier_instances():
@@ -77,3 +77,57 @@ def test_cooldown_survives_across_notifier_instances():
     # ...but an expired entry allows again.
     n2.cooldowns[f"{url}|{event}"] = time.time() - 7200
     assert n2._cooldown_ok(url, event) is True
+
+
+# --- Minimum-significance gate (alert-quality) ---------------------------
+# A price drop must be at least $1 AND at least 1% below the reference
+# price to earn a ping. Real case: on 2026-10-03 the Paldean Fates ETB fired
+# five alerts for drops of $0.02–$0.47 on a ~$521 listing. Those are noise.
+
+
+def test_pocket_change_drop_does_not_alert():
+    # The exact 2026-10-03 noise case: $521.64 -> $521.62.
+    n = StubNotifier()
+    state = _state("$521.64")
+    handle_result(_res("$521.62"), state, n, baseline=False)
+    assert n.sent == []
+    # A suppressed drip must not move the alert floor.
+    assert state[URL]["price_drop_alerted"] is None
+
+
+def test_drop_below_dollar_floor_does_not_alert():
+    # $0.49 on a $39.99 item: under the $1 absolute floor.
+    n = StubNotifier()
+    state = _state("$39.99")
+    handle_result(_res("$39.50"), state, n, baseline=False)
+    assert n.sent == []
+
+
+def test_drop_below_percent_floor_does_not_alert():
+    # $2.00 on a $521.64 item clears $1 but is only 0.38% — still noise.
+    n = StubNotifier()
+    state = _state("$521.64")
+    handle_result(_res("$519.64"), state, n, baseline=False)
+    assert n.sent == []
+
+
+def test_drop_meeting_both_floors_alerts():
+    # $2.00 on a $200.00 item: >= $1 and exactly 1% — qualifies.
+    n = StubNotifier()
+    state = _state("$200.00")
+    handle_result(_res("$198.00"), state, n, baseline=False)
+    assert n.sent == [("price_drop", "$198.00")]
+    assert state[URL]["price_drop_alerted"] == "$198.00"
+
+
+def test_suppressed_drip_keeps_floor_for_later_drop():
+    # A suppressed dip doesn't move the floor; a later meaningful dip
+    # measured against it still fires.
+    n = StubNotifier()
+    state = _state("$520.69")
+    state[URL]["price_drop_alerted"] = "$520.69"
+    handle_result(_res("$519.99"), state, n, baseline=False)  # $0.70: suppressed
+    assert n.sent == []
+    handle_result(_res("$514.00"), state, n, baseline=False)  # $5.99: fires
+    assert n.sent == [("price_drop", "$514.00")]
+    assert state[URL]["price_drop_alerted"] == "$514.00"
