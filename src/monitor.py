@@ -27,6 +27,40 @@ from .scrapers import SCRAPERS
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config" / "products.yaml"
 STATE_PATH = ROOT / "state.json"
+LOCK_PATH = ROOT / "monitor.lock"
+
+
+def acquire_singleton_lock(lock_path: Path = None):
+    """Best-effort single-instance guard.
+
+    lock_path defaults to the module-level LOCK_PATH (resolved lazily so tests
+    can monkeypatch it).
+
+    Returns an open file handle that holds a non-blocking exclusive lock for
+    the life of the process, or None if another monitor process is already
+    running. Without this, two overlapping --once passes (e.g. a stalled
+    pass still alive when cron fires the next one) each load the same stale
+    state/cooldowns, both fire the same alert, and both write state.json —
+    that was the Oct 8 duplicate price-drop ping.
+
+    Uses fcntl.flock, which releases automatically on process exit, so a
+    crashed run can never leave a stale lock behind. On platforms without
+    fcntl (Windows) there is no locking API to use, so we proceed
+    unguarded — interactive Windows runs are single-pass anyway.
+    """
+    if lock_path is None:
+        lock_path = LOCK_PATH
+    try:
+        import fcntl
+    except ImportError:
+        return open(lock_path, "a", encoding="utf-8")
+    fh = open(lock_path, "a", encoding="utf-8")
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fh.close()
+        return None
+    return fh
 
 # Alert-quality gate: a price drop only earns a Discord ping when it is at
 # least this many dollars AND this percent below the reference price.
@@ -178,6 +212,14 @@ def main() -> None:
     args = ap.parse_args()
 
     load_dotenv(ROOT / ".env")
+
+    # Single-instance guard: if another monitor process is mid-pass, bail out
+    # instead of double-alerting and clobbering its state writes.
+    lock = acquire_singleton_lock()
+    if lock is None:
+        print("[lock] another monitor instance is already running — exiting")
+        return
+
     poll_interval = int(os.getenv("POLL_INTERVAL_SEC", "60"))
     cooldown = int(os.getenv("ALERT_COOLDOWN_SEC", "1800"))
 

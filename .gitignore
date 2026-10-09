@@ -4,3 +4,4 @@ __pycache__/
 .env
 state.json
 alerts.log
+monitor.lock

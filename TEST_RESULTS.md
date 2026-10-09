@@ -97,3 +97,22 @@ URL first.
 - **Hosted check job** (`pokestock-monitor-check`, every 5 min) is healthy:
   zero consecutive failures, latest state writes current (costco.com both
   OutOfStock/$39.99, amazon.com both InStock).
+
+## Live behavior — 2026-10-09 (upkeep pass)
+
+- **Duplicate-fire incident (Oct 8)**: `alerts.log` showed two identical
+  price-drop alerts ($250.00, `amazon.ca` `B0G3CY83L5`) sent 72 seconds
+  apart. Root cause: a stalled `--once` pass was still alive when cron
+  fired the next one — both loaded the same stale `state.json`/`_cooldowns`
+  at startup, so both passed the 30-min cooldown and both fired, then raced
+  on saving state. The cooldown design was fine; the missing piece was a
+  single-instance guard.
+- **Fix**: `acquire_singleton_lock()` in `src/monitor.py` takes a
+  non-blocking exclusive `fcntl.flock` on `monitor.lock` (repo root) before
+  anything else; a second process exits with `[lock]` instead of
+  double-alerting. Lock releases automatically on process exit, so a crash
+  can never wedge the monitor. Windows falls back to no lock (no `fcntl`);
+  `monitor.lock` added to `.gitignore`. New tests in
+  `tests/test_singleton_lock.py` (4 tests; lock-conflict behavior verified
+  against separate processes too).
+- **Test suite**: 47/47 passing (43 existing + 4 new lock tests).
