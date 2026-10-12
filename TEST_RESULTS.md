@@ -116,3 +116,15 @@ URL first.
   `tests/test_singleton_lock.py` (4 tests; lock-conflict behavior verified
   against separate processes too).
 - **Test suite**: 47/47 passing (43 existing + 4 new lock tests).
+
+## Live behavior — 2026-10-12 (upkeep pass)
+
+- **Failed-POST cooldown bug**: in `DiscordNotifier.send()`, the per-event
+  cooldown stamp was set *before* the webhook POST, so a failed POST (network
+  blip, Discord outage) consumed the 30-min cooldown anyway and the alert was
+  silently dropped until the cooldown expired. Fix: `send()` now restores the
+  previous cooldown stamp when the POST fails, so the next pass retries
+  promptly. New test `test_failed_send_does_not_consume_cooldown` in
+  `tests/test_notifier_log.py` (POST mocked to fail; asserts 3 retry attempts
+  and a second `send()` hits the network again, not cooldown-suppressed).
+- **Test suite**: 48/48 passing.

@@ -95,6 +95,8 @@ class DiscordNotifier:
         """Build and deliver (or print) the embed. Returns True if sent/printed."""
         if event_type not in COLORS:
             raise ValueError(f"unknown event_type: {event_type!r}")
+        key = f"{result.url}|{event_type}"
+        prev_stamp = self.cooldowns.get(key, 0.0)
         if not self._cooldown_ok(result.url, event_type):
             print(f"[cooldown] suppressed {event_type} for {result.url}")
             self._log_alert(event_type, result, "cooldown-suppressed")
@@ -126,6 +128,10 @@ class DiscordNotifier:
             return True
         ok, reason = self._post_with_retry(payload)
         if not ok:
+            # The alert never reached Discord, so it must not eat the
+            # cooldown: restore the previous stamp so the next pass retries
+            # promptly instead of waiting out ALERT_COOLDOWN_SEC.
+            self.cooldowns[key] = prev_stamp
             print(f"[notifier] {reason}")
             self._log_alert(event_type, result, f"failed: {reason}")
             return False
