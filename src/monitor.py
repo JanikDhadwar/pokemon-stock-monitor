@@ -160,7 +160,7 @@ def handle_result(result: ProductResult, state: dict, notifier: DiscordNotifier,
         "retailer": result.retailer,
         "in_stock": result.in_stock,
         "price": result.price,
-        "price_drop_alerted": prev.get("price_drop_alerted"),
+        "price_drop_alerted": prev.get("price_drop_alerted") if prev else None,
         "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
 

@@ -131,3 +131,22 @@ def test_suppressed_drip_keeps_floor_for_later_drop():
     handle_result(_res("$514.00"), state, n, baseline=False)  # $5.99: fires
     assert n.sent == [("price_drop", "$514.00")]
     assert state[URL]["price_drop_alerted"] == "$514.00"
+
+
+def test_first_sighting_of_tracked_url_does_not_crash():
+    """Regression: a product returning real data for the first time (prev is
+    None) must send new_listing and write a state entry, not AttributeError."""
+    n = StubNotifier()
+    state = {}
+    handle_result(_res("$39.99"), state, n, baseline=False)
+    assert n.sent == [("new_listing", "$39.99")]
+    assert state[URL]["price_drop_alerted"] is None
+    assert state[URL]["in_stock"] is True
+
+
+def test_first_sighting_on_baseline_is_silent_but_still_recorded():
+    n = StubNotifier()
+    state = {}
+    handle_result(_res("$39.99"), state, n, baseline=True)
+    assert n.sent == []
+    assert state[URL]["price"] == "$39.99"
