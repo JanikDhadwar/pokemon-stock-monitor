@@ -112,13 +112,27 @@ def _price_to_float(value) -> float:
         return float("inf")
 
 
+FAIL_STREAKS_KEY = "_fail_streaks"
+
+
 def handle_result(result: ProductResult, state: dict, notifier: DiscordNotifier,
                   baseline: bool) -> None:
     tag = f"[{result.retailer}]"
     if result.error and result.in_stock is None:
         # Unknown — never alert, and never overwrite last-known-good state.
-        print(f"{tag} {result.name}: UNKNOWN ({result.error})")
+        # But record the failure streak so a retailer outage (e.g. amazon.ca
+        # bot-walling the VM) is visible in state.json without grepping
+        # cron logs: url -> consecutive failed passes.
+        streaks = state.setdefault(FAIL_STREAKS_KEY, {})
+        streak = streaks.get(result.url, 0) + 1
+        streaks[result.url] = streak
+        print(f"{tag} {result.name}: UNKNOWN ({result.error})"
+              + (f" [fail streak: {streak}]" if streak > 1 else ""))
         return
+    # Success clears any accumulated fail streak for this URL.
+    streaks = state.get(FAIL_STREAKS_KEY)
+    if streaks and result.url in streaks:
+        del streaks[result.url]
     print(f"{tag} {result.name}: stock={result.in_stock} price={result.price}"
           + (f" !! {result.error}" if result.error else ""))
     prev = state.get(result.url)
