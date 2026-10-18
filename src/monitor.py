@@ -115,6 +115,23 @@ def _price_to_float(value) -> float:
 FAIL_STREAKS_KEY = "_fail_streaks"
 
 
+def prune_stale_fail_streaks(state: dict, tracked_urls: set) -> int:
+    """Drop fail-streak entries for URLs no longer in products.yaml.
+
+    A removed product's streak would otherwise sit in state.json forever
+    (its URL is never checked again, so it never clears), misleading the
+    "which retailers are down" read of the streak data. Returns the number
+    of pruned entries.
+    """
+    streaks = state.get(FAIL_STREAKS_KEY)
+    if not streaks:
+        return 0
+    dead = [u for u in streaks if u not in tracked_urls]
+    for u in dead:
+        del streaks[u]
+    return len(dead)
+
+
 def handle_result(result: ProductResult, state: dict, notifier: DiscordNotifier,
                   baseline: bool) -> None:
     tag = f"[{result.retailer}]"
@@ -269,6 +286,10 @@ def main() -> None:
             handle_result(result, state, notifier, baseline)
             time.sleep(random.uniform(1.0, 3.0))  # politeness jitter between products
         state["_cooldowns"] = notifier.cooldowns  # persist across --once restarts
+        n_pruned = prune_stale_fail_streaks(state, {p.get("url") for p in products})
+        if n_pruned:
+            print(f"[pass] pruned {n_pruned} stale fail-streak "
+                  f"{'entry' if n_pruned == 1 else 'entries'} (no longer tracked)")
         save_state(state)
         n_urls = sum(1 for k in state if not k.startswith("_"))
         print(f"[pass] done — state saved ({n_urls} urls tracked)")

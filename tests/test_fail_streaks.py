@@ -4,7 +4,7 @@ A retailer outage (e.g. amazon.ca bot-walling the VM) must be visible in
 state.json without grepping cron logs; a single recovery clears the streak.
 """
 from src.models import ProductResult
-from src.monitor import handle_result, FAIL_STREAKS_KEY
+from src.monitor import handle_result, prune_stale_fail_streaks, FAIL_STREAKS_KEY
 
 URL = "https://example.com/p/1"
 URL2 = "https://example.com/p/2"
@@ -55,3 +55,23 @@ def test_failure_does_not_touch_last_known_good_state():
     handle_result(_fail(), state, n, baseline=False)
     assert state[URL]["price"] == "$99.99"
     assert state[URL]["in_stock"] is True
+
+
+def test_prune_removes_streaks_for_untracked_urls():
+    state = {FAIL_STREAKS_KEY: {URL: 851, URL2: 3}}
+    pruned = prune_stale_fail_streaks(state, {URL2})
+    assert pruned == 1
+    assert URL not in state[FAIL_STREAKS_KEY]
+    assert state[FAIL_STREAKS_KEY][URL2] == 3
+
+
+def test_prune_keeps_all_streaks_when_nothing_is_stale():
+    state = {FAIL_STREAKS_KEY: {URL: 5, URL2: 2}}
+    assert prune_stale_fail_streaks(state, {URL, URL2}) == 0
+    assert state[FAIL_STREAKS_KEY] == {URL: 5, URL2: 2}
+
+
+def test_prune_with_no_streaks_key_is_a_noop():
+    state = {}
+    assert prune_stale_fail_streaks(state, {URL}) == 0
+    assert FAIL_STREAKS_KEY not in state
