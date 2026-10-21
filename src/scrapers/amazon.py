@@ -30,7 +30,16 @@ class AmazonScraper(BaseScraper):
         except Exception as exc:
             return ProductResult(self.retailer, name, url, sku, error=f"request failed: {exc}")
         if resp.status_code != 200:
-            return ProductResult(self.retailer, name, url, sku, error=f"HTTP {resp.status_code}")
+            # Amazon serves its bot wall as a 503 "dog page" — a bare
+            # "HTTP 503" is indistinguishable from a real outage, so name
+            # it when the body carries the bot-check markers.
+            if self._looks_like_botwall(resp.text):
+                return ProductResult(
+                    self.retailer, name, url, sku,
+                    error=f"bot wall (HTTP {resp.status_code}): "
+                          "CAPTCHA/bot-check page served")
+            return ProductResult(self.retailer, name, url, sku,
+                                 error=f"HTTP {resp.status_code}")
         html = resp.text
         if self._looks_like_botwall(html):
             return ProductResult(self.retailer, name, url, sku,

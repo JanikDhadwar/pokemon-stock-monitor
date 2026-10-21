@@ -162,6 +162,32 @@ class TestAmazon:
         assert r.in_stock is None
         assert r.error is not None and "CAPTCHA" in r.error
 
+    def test_dogpage_503_named_as_botwall(self):
+        # Amazon serves its bot wall as HTTP 503 with the "dog page".
+        # It must be labelled as a wall, not a plain outage.
+        r = check(self.cls, "amazon_dogpage_503.html", status_code=503)
+        assert r.in_stock is None
+        assert r.error is not None
+        assert "bot wall" in r.error and "503" in r.error
+
+    def test_plain_503_stays_plain(self):
+        # A 503 without bot-wall markers is a real outage, not the wall.
+        scraper = make_scraper(
+            self.cls, "<html><body>Service Unavailable</body></html>",
+            status_code=503)
+        r = scraper.check(PRODUCT)
+        assert r.in_stock is None
+        assert r.error == "HTTP 503"
+
+    def test_dogpage_503_on_amazon_ca(self):
+        # The Oct 2026 amazon.ca walling hit the CA subclass — it must
+        # surface the same labelled error.
+        r = check(SCRAPERS["amazon_ca"], "amazon_dogpage_503.html",
+                  status_code=503, retailer="amazon_ca")
+        assert r.in_stock is None
+        assert r.retailer == "amazon_ca"
+        assert r.error is not None and "bot wall" in r.error
+
     def test_no_signal(self):
         r = check(self.cls, "amazon_nosignal.html")
         assert r.in_stock is None

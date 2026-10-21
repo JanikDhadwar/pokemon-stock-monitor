@@ -128,3 +128,20 @@ URL first.
   `tests/test_notifier_log.py` (POST mocked to fail; asserts 3 retry attempts
   and a second `send()` hits the network again, not cooldown-suppressed).
 - **Test suite**: 48/48 passing.
+
+## Live behavior — 2026-10-21 (upkeep pass)
+
+- **Re-tested every retailer honestly**: `PROXIES= .venv/bin/python -m src.monitor --once --dry-run` (13 products, 7 retailers, direct connection, no proxies) from the VM sandbox. Nothing faked.
+  | Retailer | Result | Detail |
+  |---|---|---|
+  | Pokémon Center (2) | ❌ Blocked | HTTP **403 from CloudFront** on both — unchanged since Oct 2. |
+  | Walmart US (2) | ❌ Blocked | PerimeterX challenge page on both — unchanged. |
+  | Walmart CA (2) | ❌ Blocked | PerimeterX challenge page on both — same wall as US. |
+  | Costco US (2) | ✅ Works | Real pages, both 5-pack mini tins **OutOfStock / $39.99**. |
+  | Amazon US (2) | ✅ Works | Real pages: GO ETB **InStock / $193.12**; Paldean Fates ETB **InStock / $528.98** (third-party seller pricing — was $356.99 on Oct 13, climbed back). |
+  | Amazon CA (2) | ⚠️ Partial | Ascended Heroes ETB readable: **InStock / $269.38**. Perfect Order ETB returned a bot-walled page with no stock signal (fail streak 3) — same intermittent walling seen Oct 19. |
+  | Costco CA (1) | ❌ Not trackable | Product entry is a placeholder ("replace with a real /p/ product URL") pointing at costco.ca/ root, which serves a bot-challenge page. Needs a real product URL in `config/products.yaml` — Janik's side to supply. |
+- **Hosted check job health**: `pokestock-monitor-check` (every 5 min, `PROXIES=` forced empty per its cron body) succeeds on every run; alerts keep flowing (last in `alerts.log`: Oct 18 restock on the Perfect Order ETB, $134.80). The Oct 8 duplicate-fire cause (stale-state race between overlapping passes) is gone — during this pass my own dry-run attempt collided with a live cron pass and the singleton lock correctly made the second process exit with `[lock]` instead of double-processing.
+- **Side note**: a dry-run accidentally ran with `PROXIES` picked up from `.env` (10 Webshare proxies, blocked in this sandbox) and every product UNKNOWNed; it self-corrected on the next hosted pass (fail streaks cleared on successful reads). The cron body already forces `PROXIES=` — nothing to fix.
+- **Improvement this pass (parser robustness)**: Amazon serves its bot wall as HTTP **503** (the "dog page"), previously reported as a bare `HTTP 503` — indistinguishable from a real outage in cron logs and `_fail_streaks`. `AmazonScraper.check()` now names it: `bot wall (HTTP 503): CAPTCHA/bot-check page served` when the body carries bot-check markers (added Amazon's "not a robot" phrasing and the dog-page's "automated access to Amazon data" footer to `CAPTCHA_HINTS`); a 503 without markers still reports plain `HTTP 503`. CA subclass inherits the behavior (the Oct 19 amazon.ca walling was the motivator). New tests: `test_dogpage_503_named_as_botwall`, `test_plain_503_stays_plain`, `test_dogpage_503_on_amazon_ca` (+ fixture `amazon_dogpage_503.html`).
+- **Test suite**: 60/60 passing (57 existing + 3 new).

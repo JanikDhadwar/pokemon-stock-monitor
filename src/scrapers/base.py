@@ -37,8 +37,10 @@ LD_JSON_RE = re.compile(
 CAPTCHA_HINTS = (
     "captcha",
     "are you a robot",
+    "not a robot",  # Amazon: "make sure you're not a robot"
     "enter the characters you see",
     "robot check",
+    "automated access to amazon data",  # Amazon's 503 "dog page" footer
 )
 
 
