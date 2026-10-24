@@ -113,6 +113,14 @@ def _price_to_float(value) -> float:
 
 
 FAIL_STREAKS_KEY = "_fail_streaks"
+OUTAGE_ALERTED_KEY = "_outage_alerted"
+
+# Alert-quality: a tracked URL that previously returned real data and then
+# fails this many consecutive passes gets one Discord "retailer outage"
+# ping. Expected always-blocked retailers (Pokémon Center, Walmart — never
+# returned data) never qualify, and expected outages don't re-ping every
+# pass. Default 288 = 24h at the hosted 5-minute check cadence.
+OUTAGE_ALERT_STREAK = int(os.getenv("OUTAGE_ALERT_STREAK", "288"))
 
 
 def prune_stale_fail_streaks(state: dict, tracked_urls: set) -> int:
@@ -132,6 +140,38 @@ def prune_stale_fail_streaks(state: dict, tracked_urls: set) -> int:
     return len(dead)
 
 
+def _maybe_alert_retailer_outage(result: ProductResult, state: dict,
+                                 notifier: DiscordNotifier, streak: int) -> None:
+    """One-shot Discord alert when a previously-working retailer goes dark.
+
+    Fires only when all of these hold:
+      - the consecutive-failure streak crossed OUTAGE_ALERT_STREAK,
+      - the URL has a last-known-good read (real in_stock value) — expected
+        always-blocked retailers (Pokémon Center, Walmart, the costco.ca
+        placeholder) have never returned data and never qualify,
+      - we haven't already alerted for this outage (flag lives in
+        state["_outage_alerted"], cleared on the next successful pass).
+
+    The flag is set only after a successful send(): a failed Discord POST
+    retries on the next pass (matching the failed-POST cooldown philosophy)
+    instead of swallowing the alert.
+    """
+    if streak < OUTAGE_ALERT_STREAK:
+        return
+    alerted = state.setdefault(OUTAGE_ALERTED_KEY, {})
+    if result.url in alerted:
+        return
+    last_good = state.get(result.url) or {}
+    if last_good.get("in_stock") not in (True, False):
+        return
+    extra = (f"{streak} consecutive failed checks — no stock signal. "
+             f"Last good read: {last_good.get('checked_at')} "
+             f"(stock={last_good.get('in_stock')}, price={last_good.get('price')}). "
+             f"Latest error: {result.error}")
+    if notifier.send("retailer_outage", result, extra=extra):
+        alerted[result.url] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
 def handle_result(result: ProductResult, state: dict, notifier: DiscordNotifier,
                   baseline: bool) -> None:
     tag = f"[{result.retailer}]"
@@ -145,11 +185,16 @@ def handle_result(result: ProductResult, state: dict, notifier: DiscordNotifier,
         streaks[result.url] = streak
         print(f"{tag} {result.name}: UNKNOWN ({result.error})"
               + (f" [fail streak: {streak}]" if streak > 1 else ""))
+        _maybe_alert_retailer_outage(result, state, notifier, streak)
         return
-    # Success clears any accumulated fail streak for this URL.
+    # Success clears any accumulated fail streak for this URL — and resets
+    # the outage alert flag, so a future outage fires a fresh one-shot.
     streaks = state.get(FAIL_STREAKS_KEY)
     if streaks and result.url in streaks:
         del streaks[result.url]
+    alerted = state.get(OUTAGE_ALERTED_KEY)
+    if alerted and result.url in alerted:
+        del alerted[result.url]
     print(f"{tag} {result.name}: stock={result.in_stock} price={result.price}"
           + (f" !! {result.error}" if result.error else ""))
     prev = state.get(result.url)

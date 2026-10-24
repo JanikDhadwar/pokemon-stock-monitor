@@ -129,6 +129,40 @@ URL first.
   and a second `send()` hits the network again, not cooldown-suppressed).
 - **Test suite**: 48/48 passing.
 
+## Live behavior — 2026-10-24 (upkeep pass)
+
+- **Amazon fully bot-walled from the VM for ~1–2 days**: all four Amazon
+  listings (US ×2, CA ×2) now fail every pass (fail streaks ~290–620, i.e.
+  ~24–52h). Last real reads: GO ETB US $193.12 (Oct 16 price drop),
+  Perfect Order CA $120.00 (Oct 22), Ascended Heroes CA $268.68 (Oct 21),
+  Paldean Fates US $528.98 (Oct 23 ~04:43 PDT). Costco US still returns real
+  data (both 5-pack mini tins out of stock / $39.99). Pokémon Center/Walmart
+  blocks unchanged (expected, no proxies).
+- **Hosted check job** (`pokestock-monitor-check`, every 5 min) healthy:
+  every run exits 0; the singleton lock correctly bounced my own dry-run
+  attempt when a live pass was mid-run (no double-processing).
+- **Improvement this pass (alert quality)**: the monitor previously stayed
+  silent when a working retailer went dark — Janik only found out from cron
+  logs. `handle_result()` now fires a one-shot Discord `retailer_outage`
+  alert when a URL that previously returned real data crosses
+  `OUTAGE_ALERT_STREAK` consecutive failures (default 288 = 24h at the
+  hosted 5-min cadence, env-overridable). The alert names the streak length
+  and the last good read (time, stock, price). Expected always-blocked
+  retailers (Pokémon Center, Walmart, costco.ca placeholder) never qualify
+  because they have no last-known-good data. The flag lives in
+  state["_outage_alerted"], is set only after a successful send (a failed
+  POST retries next pass instead of being swallowed — same philosophy as
+  the Oct 12 fix), and clears on the next successful read so a future
+  outage alerts again. New `tests/test_outage_alerts.py` (6 tests).
+- **It fired for real on the first live run**: the 5-min hosted cron picked
+  up the new code from the working tree and POSTed 3 genuine
+  `retailer_outage` Discord alerts (alerts.log outcome "sent", ~00:07–00:08
+  PDT): GO ETB (292 straight failures), Perfect Order CA (391), Ascended
+  Heroes CA (625) — each naming its last good read. The 4th Amazon URL
+  (Paldean Fates, streak ~233) will fire its own one-shot when it crosses
+  288 (~24h after its last good read).
+- **Test suite**: 66/66 passing (60 existing + 6 new).
+
 ## Live behavior — 2026-10-21 (upkeep pass)
 
 - **Re-tested every retailer honestly**: `PROXIES= .venv/bin/python -m src.monitor --once --dry-run` (13 products, 7 retailers, direct connection, no proxies) from the VM sandbox. Nothing faked.

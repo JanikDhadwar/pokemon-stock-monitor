@@ -12,12 +12,14 @@ COLORS = {
     "out_of_stock": 0xE74C3C,  # red
     "price_drop": 0x3498DB,    # blue
     "new_listing": 0xF1C40F,   # yellow
+    "retailer_outage": 0xE67E22,  # orange — a tracked retailer went dark
 }
 TITLES = {
     "restock": "🟢 RESTOCK",
     "out_of_stock": "🔴 OUT OF STOCK",
     "price_drop": "🔵 PRICE DROP",
     "new_listing": "🟡 NEW LISTING",
+    "retailer_outage": "🟠 RETAILER OUTAGE",
 }
 
 _STATUS_LABEL = {True: "In Stock ✅", False: "Out of Stock ❌", None: "Unknown ❓"}
