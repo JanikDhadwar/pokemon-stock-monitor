@@ -119,7 +119,9 @@ OUTAGE_ALERTED_KEY = "_outage_alerted"
 # fails this many consecutive passes gets one Discord "retailer outage"
 # ping. Expected always-blocked retailers (Pokémon Center, Walmart — never
 # returned data) never qualify, and expected outages don't re-ping every
-# pass. Default 288 = 24h at the hosted 5-minute check cadence.
+# pass. Default 288 = 24h at the hosted 5-minute check cadence. When the
+# URL returns real data again, handle_result() fires one matching
+# "retailer recovered" ping and clears the flag.
 OUTAGE_ALERT_STREAK = int(os.getenv("OUTAGE_ALERT_STREAK", "288"))
 
 
@@ -187,17 +189,34 @@ def handle_result(result: ProductResult, state: dict, notifier: DiscordNotifier,
               + (f" [fail streak: {streak}]" if streak > 1 else ""))
         _maybe_alert_retailer_outage(result, state, notifier, streak)
         return
-    # Success clears any accumulated fail streak for this URL — and resets
-    # the outage alert flag, so a future outage fires a fresh one-shot.
+    # Success clears any accumulated fail streak for this URL. If an outage
+    # alert is outstanding for it, this is a recovery: fire a one-shot
+    # "retailer recovered" ping — the mirror of the outage alert. Without
+    # it, Janik only ever hears that a retailer went dark, never that it
+    # came back (e.g. an amazon.ca listing quietly readable again). The
+    # flag clears only after a successful send, so a failed Discord POST
+    # retries on the next successful pass instead of being swallowed.
     streaks = state.get(FAIL_STREAKS_KEY)
+    streak_before = streaks.get(result.url, 0) if streaks else 0
     if streaks and result.url in streaks:
         del streaks[result.url]
-    alerted = state.get(OUTAGE_ALERTED_KEY)
-    if alerted and result.url in alerted:
-        del alerted[result.url]
+    alerted = state.get(OUTAGE_ALERTED_KEY) or {}
+    outage_since = alerted.get(result.url)
     print(f"{tag} {result.name}: stock={result.in_stock} price={result.price}"
           + (f" !! {result.error}" if result.error else ""))
     prev = state.get(result.url)
+    if outage_since and prev is not None:
+        bits = []
+        if streak_before:
+            bits.append(f"back online after {streak_before} consecutive failed checks")
+        else:
+            bits.append("back online")
+        bits.append(f"outage alerted {outage_since}")
+        if prev.get("checked_at"):
+            bits.append(f"last read before the outage: {prev.get('checked_at')} "
+                        f"(stock={prev.get('in_stock')}, price={prev.get('price')})")
+        if notifier.send("retailer_recovered", result, extra=". ".join(bits) + "."):
+            del alerted[result.url]
     if prev is None:
         # First sighting of this URL. On a fresh state.json this is just the
         # baseline (no spam); on later runs it's a genuinely new listing.

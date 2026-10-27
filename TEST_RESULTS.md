@@ -179,3 +179,38 @@ URL first.
 - **Side note**: a dry-run accidentally ran with `PROXIES` picked up from `.env` (10 Webshare proxies, blocked in this sandbox) and every product UNKNOWNed; it self-corrected on the next hosted pass (fail streaks cleared on successful reads). The cron body already forces `PROXIES=` — nothing to fix.
 - **Improvement this pass (parser robustness)**: Amazon serves its bot wall as HTTP **503** (the "dog page"), previously reported as a bare `HTTP 503` — indistinguishable from a real outage in cron logs and `_fail_streaks`. `AmazonScraper.check()` now names it: `bot wall (HTTP 503): CAPTCHA/bot-check page served` when the body carries bot-check markers (added Amazon's "not a robot" phrasing and the dog-page's "automated access to Amazon data" footer to `CAPTCHA_HINTS`); a 503 without markers still reports plain `HTTP 503`. CA subclass inherits the behavior (the Oct 19 amazon.ca walling was the motivator). New tests: `test_dogpage_503_named_as_botwall`, `test_plain_503_stays_plain`, `test_dogpage_503_on_amazon_ca` (+ fixture `amazon_dogpage_503.html`).
 - **Test suite**: 60/60 passing (57 existing + 3 new).
+
+## Live behavior — 2026-10-27 (upkeep pass)
+
+- **Hosted check job** (`pokestock-monitor-check`, every 5 min) healthy:
+  enabled, 0 consecutive failures, last run 00:03 PDT today succeeded.
+  `state.json` fresh (Costco entries checked 07:02 UTC). `checks.log`
+  looks stale (last line Oct 24) only because it is written on degraded
+  runs, not every pass — the job itself is current.
+- **Amazon US still dark (~4 days)**: GO ETB fail streak 1155 (last good
+  Oct 23, $193.12), Paldean Fates 1096 (last good Oct 23, $528.98). Both
+  outage alerts already sent Oct 24; no new action needed.
+- **Amazon CA flapping, system working as designed**: Ascended Heroes CA
+  recovered ~Oct 25 ($242.69) then went dark again — the outage flag had
+  cleared on recovery, so the second outage alert fired correctly on
+  Oct 26 13:33 UTC at streak 288. Perfect Order CA is live again right
+  now ($134.99, checked 07:03 UTC) with no alert owed (price up from its
+  $120.00 alerted floor, still in stock).
+- **Costco US still live**: both 5-pack mini tins OutOfStock / $39.99.
+  Pokémon Center / Walmart / costco.ca placeholder blocks unchanged
+  (expected, no proxies).
+- **Improvement this pass (alert quality)**: the outage alert had no
+  mirror — Janik heard when a retailer went dark but never when it came
+  back (Perfect Order CA's quiet recovery was the case in point).
+  `handle_result()` now fires a one-shot `retailer_recovered` Discord
+  ping when a URL with an outstanding outage flag returns real data,
+  naming the failed-check streak, when the outage was alerted, and the
+  last read before the outage. The flag clears only after a successful
+  send (failed POST retries next successful pass, same philosophy as
+  the Oct 12 fix), and no ping fires for URLs that never had an outage
+  alert. New notifier event type (`🔄 RETAILER BACK ONLINE`, teal).
+  No spurious pings on deploy: the three currently-flagged URLs are all
+  still failing, and Perfect Order CA's flag already cleared under the
+  old code when it recovered.
+- **Test suite**: 69/69 passing (66 existing + 3 new recovery tests;
+  the existing recovery test updated for the extra ping).
