@@ -1,27 +1,28 @@
-# Test Results — status snapshot 2026-10-30
+# Test Results — status snapshot 2026-11-02
 
-**Scope note:** the per-retailer table below is current as of 2026-10-30.
+**Scope note:** the per-retailer table below is current as of 2026-11-02.
 It is derived from the hosted check job's live state (`state.json` fail
 streaks, `alerts.log`, and the `pokestock-monitor-check` cron running every
 5 min), not from a fresh hand-run scrape. The original 2026-10-02 live
 verification is preserved below as history — its "Amazon works" line is
 **no longer true** (see Amazon US row).
 
-## Per-retailer status — 2026-10-30 (13 products tracked, datacenter IP, zero proxies)
+## Per-retailer status — 2026-11-02 (12 verified products + 1 skipped placeholder, datacenter IP, zero proxies)
 
 | Retailer | Result | Detail |
 |---|---|---|
-| Pokémon Center (2 products) | ❌ **Blocked** | Still CloudFront-blocked; 4,000+ consecutive failed hosted passes. Unchanged since Oct 2 — residential proxies still required before this retailer works at all. |
-| Walmart US + CA (4 products) | ❌ **Blocked** | Still PerimeterX/challenge-walled; 4,000+ consecutive failed hosted passes. Parsers remain untested against a real page. |
-| Costco US (2 products) | ✅ **Works** | Still returning real pages: both 5-pack mini tins parse as **OutOfStock / $39.99**. Costco CA is a placeholder URL (`https://www.costco.ca/`, `verified: false`) — not a real listing, ignore its fail streak. |
-| Amazon US (2 products) | ❌ **Bot-walled since ~Oct 23** | Was working Oct 2; now ~2,000 consecutive failed hosted passes (~7 days). Outage alerts fired (e.g. Paldean Fates ETB, Oct 24). The 503 dog-page labelling still applies — failures surface as "bot wall", not bare HTTP errors. Treat any return of data here as flapping until it holds for a day. |
-| Amazon CA (2 products) | ⚠️ **Flapping, currently readable** | Bot-walled for days, then recovered twice: Ascended Heroes ETB at **$219.98** (Oct 27) and Perfect Order ETB at **$134.80** (Oct 29), each with a matching `retailer_recovered` ping. Currently returning real data. The Ascended Heroes listing has a history of deep, brief dips — treat single-pass dips as unconfirmed until a second pass agrees. |
+| Pokémon Center (2 products) | ❌ **Blocked** | Still CloudFront-blocked; 5,076 consecutive failed hosted passes. Unchanged since Oct 2 — residential proxies still required before this retailer works at all. |
+| Walmart US + CA (4 products) | ❌ **Blocked** | Still PerimeterX/challenge-walled; 5,076 consecutive failed hosted passes. Parsers remain untested against a real page. |
+| Costco US (2 products) | ✅ **Works** | Still returning real pages: both 5-pack mini tins parse as **OutOfStock / $39.99** (last read Nov 2 00:02 MST). |
+| Costco CA (placeholder) | ⏭️ **Skipped since Nov 2** | The `https://www.costco.ca/` homepage placeholder (`verified: false`) is no longer fetched each pass — it had accrued a junk 5,076 fail streak. Its streak entry clears on the next hosted pass. Still needs a real costco.ca `/p/` product URL before it tracks anything. |
+| Amazon US (2 products) | ❌ **Bot-walled since ~Oct 23** | Was working Oct 2; now ~2,800+ consecutive failed hosted passes (~10 days), last real data Oct 23. Outage alerts fired Oct 24. The 503 dog-page labelling still applies — failures surface as "bot wall", not bare HTTP errors. Treat any return of data here as flapping until it holds for a day. |
+| Amazon CA (2 products) | ⚠️ **Flapping, currently readable** | Recovered twice after the Oct 24–28 wall: Ascended Heroes ETB at **$219.98** (Oct 27) and Perfect Order ETB at **$134.80** (Oct 29), each with a matching `retailer_recovered` ping. Latest hosted reads Nov 2 00:03 MST: Ascended Heroes **$255.81**, Perfect Order **$130.98**, both in stock. The Ascended Heroes listing has a history of deep, brief dips — treat single-pass dips as unconfirmed until a second pass agrees. |
 
-## Honest bottom line — 2026-10-30
+## Honest bottom line — 2026-11-02
 
-- **2 of 5 retailer groups work right now with $0 infra** (Costco US fully, Amazon CA intermittently). Amazon US, the Oct 2 success story, is currently walled.
+- **2 of 5 retailer groups work right now with $0 infra** (Costco US fully, Amazon CA intermittently). Amazon US, the Oct 2 success story, is still walled after ~10 days.
 - **Pokémon Center — the most important retailer for this use case — is still completely blocked** from datacenter IPs. The #1 upgrade that matters is still residential/rotating proxies, not more code.
-- The hosted check job itself is healthy: `pokestock-monitor-check` succeeding every 5 min, zero consecutive failures, last run Oct 30 00:03 MST.
+- The hosted check job itself is healthy: `pokestock-monitor-check` succeeding every 5 min, zero consecutive failures, last run Nov 2 00:03 MST.
 
 ---
 

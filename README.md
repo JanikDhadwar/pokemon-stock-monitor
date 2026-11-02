@@ -75,6 +75,9 @@ products:
 ```
 
 A few example products are already in the file — keep them or delete them.
+Entries with `verified: false` are placeholders, not real listings: the
+monitor skips them (no fetch, no fail streak) until you replace the URL
+with a real product page and flip the flag to `true`.
 
 **6. Start it.**
 ```bash

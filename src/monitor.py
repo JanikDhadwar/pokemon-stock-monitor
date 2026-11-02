@@ -125,6 +125,35 @@ OUTAGE_ALERTED_KEY = "_outage_alerted"
 OUTAGE_ALERT_STREAK = int(os.getenv("OUTAGE_ALERT_STREAK", "288"))
 
 
+def is_unverified_placeholder(product: dict) -> bool:
+    """True only when a product is explicitly marked verified: false.
+
+    Missing `verified` defaults to tracked: every real listing predates the
+    flag, and only an explicit false means "placeholder, not a real page".
+    """
+    return product.get("verified") is False
+
+
+def drop_placeholder_streaks(state: dict, products: list) -> int:
+    """Drop fail-streak entries for unverified placeholder products.
+
+    A placeholder (e.g. the costco.ca homepage, tracked until someone finds
+    a real costco.ca product URL) fails every pass by design, so its streak
+    grows forever and pollutes the "which retailers are down" read of the
+    streak data — same rot prune_stale_fail_streaks fixes for removed URLs,
+    except placeholders are still listed in products.yaml, so that prune
+    never touches them. Returns the number of dropped entries.
+    """
+    streaks = state.get(FAIL_STREAKS_KEY)
+    if not streaks:
+        return 0
+    placeholders = {p.get("url") for p in products if is_unverified_placeholder(p)}
+    dead = [u for u in streaks if u in placeholders]
+    for u in dead:
+        del streaks[u]
+    return len(dead)
+
+
 def prune_stale_fail_streaks(state: dict, tracked_urls: set) -> int:
     """Drop fail-streak entries for URLs no longer in products.yaml.
 
@@ -341,6 +370,14 @@ def main() -> None:
 
     def run_pass() -> None:
         for product in products:
+            if is_unverified_placeholder(product):
+                # Placeholder, not a real listing (e.g. the costco.ca
+                # homepage): fetching it every pass only grows a junk fail
+                # streak and burns a request against a page that can never
+                # parse. It becomes tracked the moment someone replaces it
+                # with a real URL and flips verified to true.
+                print(f"[skip] unverified placeholder: {product.get('url')}")
+                continue
             retailer = product.get("retailer")
             scraper = scrapers.get(retailer)
             if scraper is None:
@@ -354,6 +391,10 @@ def main() -> None:
         if n_pruned:
             print(f"[pass] pruned {n_pruned} stale fail-streak "
                   f"{'entry' if n_pruned == 1 else 'entries'} (no longer tracked)")
+        n_dropped = drop_placeholder_streaks(state, products)
+        if n_dropped:
+            print(f"[pass] dropped {n_dropped} placeholder fail-streak "
+                  f"{'entry' if n_dropped == 1 else 'entries'} (unverified product)")
         save_state(state)
         n_urls = sum(1 for k in state if not k.startswith("_"))
         print(f"[pass] done — state saved ({n_urls} urls tracked)")
