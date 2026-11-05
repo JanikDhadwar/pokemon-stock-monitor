@@ -84,6 +84,21 @@ class DiscordNotifier:
             else:
                 if 200 <= resp.status_code < 300:
                     return True, ""
+                if resp.status_code == 429:
+                    # Rate-limited, not rejected: Discord tells us when to
+                    # retry via Retry-After (seconds). Honor it — capped so
+                    # a wild header can't stall a whole check pass — then
+                    # retry instead of failing fast like other 4xx codes.
+                    # A 404/401 means a wrong or deleted webhook and retrying
+                    # won't help; a 429 is transient by definition.
+                    try:
+                        wait = min(float(resp.headers.get("Retry-After", "1")), 60.0)
+                    except (TypeError, ValueError):
+                        wait = 2 ** attempt
+                    last_err = "HTTP 429 rate limited by Discord"
+                    if attempt < 2:
+                        time.sleep(wait)
+                    continue
                 if 400 <= resp.status_code < 500:
                     return False, (
                         f"Discord rejected the webhook (HTTP {resp.status_code}) — "
