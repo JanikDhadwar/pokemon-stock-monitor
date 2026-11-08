@@ -4,6 +4,8 @@ import json
 import random
 import re
 import time
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Iterator, Optional
 
 import requests
@@ -64,20 +66,73 @@ class BaseScraper(abc.ABC):
         """Check one product dict (from products.yaml). Must not raise."""
 
     # -- HTTP ---------------------------------------------------------
+    # Statuses worth one retry after a wait instead of an instant failure:
+    # 429 (rate-limited — Costco has flapped on this since Nov 5, 2026) and
+    # 503 (Amazon's bot-wall "dog page" is also a 503, so a wait-and-retry
+    # costs nothing there either). Retry-After is honored when present.
+    RETRYABLE_STATUSES = (429, 503)
+    # A server asking us to wait an hour is not a request we honor mid-pass:
+    # the hosted job re-runs every 5 min anyway, so cap the in-pass wait.
+    MAX_RETRY_AFTER_SEC = 30
+
+    @staticmethod
+    def _retry_after_seconds(resp) -> Optional[float]:
+        """Seconds the server asks us to wait, or None if it doesn't say.
+
+        Accepts a plain seconds value ("120") or an HTTP-date. Returns None
+        for a missing, garbage, or already-past value.
+        """
+        headers = getattr(resp, "headers", None) or {}
+        raw = headers.get("Retry-After")
+        if raw is None:
+            return None
+        try:
+            return max(0.0, float(raw))
+        except (TypeError, ValueError):
+            pass
+        try:
+            when = parsedate_to_datetime(str(raw))
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if when is None:
+            return None
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        return max(0.0, (when - datetime.now(timezone.utc)).total_seconds())
+
     def _get(self, url: str, retries: int = 2) -> requests.Response:
-        """GET with per-request UA + proxy rotation, exponential backoff."""
+        """GET with per-request UA + proxy rotation, exponential backoff.
+
+        Transport errors retry with backoff (as before). A 429/503 response
+        now also retries once per attempt budget, waiting out Retry-After
+        (capped at MAX_RETRY_AFTER_SEC) instead of handing the rate-limit
+        straight to the caller as a failed pass — previously every Costco
+        429 during a limit window burned a fail streak and risked a
+        spurious outage alert, even though the next pass minutes later
+        usually succeeded.
+        """
         last_exc: Optional[Exception] = None
         for attempt in range(retries + 1):
             headers = {"User-Agent": random.choice(USER_AGENTS)}
             proxies = self.proxy_pool.as_dict() if self.proxy_pool else {}
             try:
-                return self.session.get(
+                resp = self.session.get(
                     url, headers=headers, proxies=proxies or None, timeout=self.timeout
                 )
             except requests.RequestException as exc:  # timeouts, DNS, proxy errors…
                 last_exc = exc
                 if attempt < retries:
                     time.sleep(2 ** attempt + random.random())
+                continue
+            if resp.status_code in self.RETRYABLE_STATUSES and attempt < retries:
+                wait = self._retry_after_seconds(resp)
+                if wait is None:
+                    wait = 2 ** attempt + random.random()
+                else:
+                    wait = min(wait, self.MAX_RETRY_AFTER_SEC) + random.random()
+                time.sleep(wait)
+                continue
+            return resp
         raise last_exc  # type: ignore[misc]
 
     # -- schema.org ld+json -------------------------------------------
