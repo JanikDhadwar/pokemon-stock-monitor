@@ -1,28 +1,28 @@
-# Test Results — status snapshot 2026-11-08
+# Test Results — status snapshot 2026-11-11
 
-**Scope note:** the per-retailer table below is current as of 2026-11-08.
+**Scope note:** the per-retailer table below is current as of 2026-11-11.
 It is derived from the hosted check job's live state (`state.json` fail
 streaks, `alerts.log`, and the `pokestock-monitor-check` cron running every
 5 min), not from a fresh hand-run scrape. The original 2026-10-02 live
 verification is preserved below as history — its "Amazon works" line is
 **no longer true** (see Amazon US row).
 
-## Per-retailer status — 2026-11-08 (12 verified products + 1 skipped placeholder, datacenter IP, zero proxies)
+## Per-retailer status — 2026-11-11 (12 verified products + 1 skipped placeholder, datacenter IP, zero proxies)
 
 | Retailer | Result | Detail |
 |---|---|---|
-| Pokémon Center (2 products) | ❌ **Blocked** | Still CloudFront-blocked; 6,807 consecutive failed hosted passes. Unchanged since Oct 2 — residential proxies still required before this retailer works at all. |
-| Walmart US + CA (4 products) | ❌ **Blocked** | Still PerimeterX/challenge-walled; 6,807 consecutive failed hosted passes. Parsers remain untested against a real page. |
-| Costco US (2 products) | ⚠️ **Flapping on HTTP 429 since Nov 5** | Rate-limited since 13:57 UTC Nov 5 — the new `Retry-After` retry in `BaseScraper._get` (Nov 8) targets exactly this. Last fully-live pass 02:27 UTC Nov 8: both 5-pack mini tins **OutOfStock / $39.99**. Already flagged to user Nov 5; no re-flag owed. |
+| Pokémon Center (2 products) | ❌ **Blocked** | Still CloudFront-blocked; ~7,670 consecutive failed hosted passes. Unchanged since Oct 2 — residential proxies still required before this retailer works at all. |
+| Walmart US + CA (4 products) | ❌ **Blocked** | Still PerimeterX/challenge-walled; ~7,670 consecutive failed hosted passes. Parsers remain untested against a real page. |
+| Costco US (2 products) | ⚠️ **Flapping on HTTP 429 since Nov 5** | Rate-limited since 13:57 UTC Nov 5, recovering intermittently (last fully-live pass 07:02 UTC Nov 11: both 5-pack mini tins **OutOfStock / $39.99**). The `Retry-After` retry in `BaseScraper._get` (Nov 8) targets exactly this. Already flagged to user Nov 5; no re-flag owed. |
 | Costco CA (placeholder) | ⏭️ **Skipped since Nov 2** | The `https://www.costco.ca/` homepage placeholder (`verified: false`) is no longer fetched each pass — its junk fail streak is gone from `state.json`. Still needs a real costco.ca `/p/` product URL before it tracks anything. |
-| Amazon US (2 products) | ⚠️ **Flapping, one live / one dark** | GO ETB **live again**: **InStock / $214.99** (last read 01:24 UTC Nov 8; recovered Nov 5, outage alert fired Nov 7, recovered again Nov 7 13:18 UTC — treat as flapping). Paldean Fates **still bot-walled since ~Oct 23**: streak 4,555; last real data Oct 23. Outage alert already sent Oct 24; nothing new owed. |
-| Amazon CA (2 products) | ⚠️ **Flapping, both live intermittently** | Perfect Order ETB last live **$138.36**, Ascended Heroes ETB last live **$254.73** (both 02:23 UTC Nov 8); both CAPTCHA-walled on most passes since. Ascended Heroes outage alert fired Nov 3, recovered Nov 5 17:08 UTC. The listing has a history of deep, brief dips — treat single-pass dips as unconfirmed until a second pass agrees. |
+| Amazon US (2 products) | ⚠️ **Flapping, both dark right now** | GO ETB **dark again**: last live **$213.99** (Nov 10 05:12 UTC); crossed the 288-streak threshold and the one-shot outage alert fired **Nov 11 05:12 UTC**, as designed — no re-flag owed. Paldean Fates **still bot-walled since ~Oct 23**: streak ~5,420; last real data Oct 23 ($528.98). Outage alert already sent Oct 24; nothing new owed. |
+| Amazon CA (2 products) | ⚠️ **Flapping, both live intermittently** | Perfect Order ETB last live **$129.00** (Nov 11 07:03 UTC — down from $135.40, no alert: still above the $120.00 already-alerted floor). Ascended Heroes ETB last live **$255.11** (Nov 11 07:03 UTC, up slightly from $254.73). Both CAPTCHA-walled on most passes since. The listing has a history of deep, brief dips — treat single-pass dips as unconfirmed until a second pass agrees. |
 
-## Honest bottom line — 2026-11-08
+## Honest bottom line — 2026-11-11
 
 - **No retailer group is solidly green right now with $0 infra** — Costco US and both Amazons are all flapping (429 / CAPTCHA / bot-wall on and off), but all three still return real data on a meaningful share of passes. Pokémon Center and Walmart remain fully blocked as ever.
 - **Pokémon Center — the most important retailer for this use case — is still completely blocked** from datacenter IPs. The #1 upgrade that matters is still residential/rotating proxies, not more code.
-- **The hosted check job itself is healthy: `pokestock-monitor-check` succeeding every 5 min, zero consecutive failures, last run Nov 8 00:03 MST.** One run on Nov 7 18:22 MST was interrupted by a service restart; the job reran once and completed cleanly.
+- **The hosted check job itself is healthy: `pokestock-monitor-check` succeeding every 5 min, zero consecutive failures, last run Nov 11 00:03 MST.** Three runs in Nov 7–10 were interrupted by a service restart; each reran once and completed cleanly — which is what motivated this pass's durability fix (see Nov 11 note below).
 
 ---
 
@@ -272,3 +272,37 @@ URL first.
   `tests/test_notifier_log.py` (3 tests: Retry-After honored, headerless
   fallback, persistent-429 give-up with cooldown restored).
 - **Test suite**: 77/77 passing (74 existing + 3 new).
+
+## Live behavior — 2026-11-11 (upkeep pass)
+
+- **Hosted check job** (`pokestock-monitor-check`, every 5 min) healthy:
+  enabled, 0 consecutive failures, last run Nov 11 00:03 MST succeeded.
+  `state.json` fresh (Costco entries checked 07:02 UTC, Amazon CA
+  07:03 UTC).
+- **Amazon US GO ETB went dark again**: last live $213.99 (Nov 10
+  05:12 UTC); the one-shot outage alert fired Nov 11 05:12 UTC at
+  streak 288, exactly as designed — the second outage alert for this
+  URL (first was Oct 24, recovered Nov 5). Paldean Fates still
+  bot-walled since Oct 23 (streak ~5,420); outage alert already sent
+  Oct 24.
+- **Amazon CA live intermittently**: Perfect Order $129.00, Ascended
+  Heroes $255.11 (both Nov 11 07:03 UTC). Costco US still flapping on
+  429 since Nov 5 but returning real data on a good share of passes
+  (both mini tins OutOfStock / $39.99). Pokémon Center / Walmart /
+  costco.ca placeholder blocks unchanged (expected, no proxies).
+- **Improvement this pass (alert reliability)**: three hosted runs in
+  Nov 7–10 were interrupted mid-pass by a service restart. The
+  singleton lock (Oct 9 fix) only stops *concurrent* passes — a
+  killed pass had already lost its alerts: `state.json` (and the
+  notifier's cooldown stamps, which live in a copy) were only written
+  at the end of the pass, so the rerun re-detected the same
+  transitions and could double-fire. `run_pass()` is now a
+  module-level function that saves state — results *and* cooldowns —
+  after **each** product, so a kill after product N loses nothing and
+  the rerun stays quiet. New `tests/test_incremental_save.py` (3
+  tests): save-after-each-product with the restock + cooldown already
+  in the first snapshot, a simulated kill-and-rerun firing nothing
+  twice, and placeholders/unknown retailers not triggering saves.
+  Verified end-to-end with a `--once --dry-run` in a temp copy (13
+  products, no alerts, state saved cleanly).
+- **Test suite**: 90/90 passing (87 existing + 3 new).

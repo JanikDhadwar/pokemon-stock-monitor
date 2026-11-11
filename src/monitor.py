@@ -327,6 +327,51 @@ def discover(query: str, notifier: DiscordNotifier) -> None:
         notifier.send("new_listing", ProductResult("pokemoncenter", url, url))
 
 
+def run_pass(products, scrapers, state, notifier, baseline,
+             save_fn=save_state) -> None:
+    """One check pass over every tracked product.
+
+    State is saved after EACH product, not just at the end of the pass:
+    a pass killed mid-way (service restart — seen three times in the
+    Nov 7–10 checks.log) used to lose every alert + cooldown from the
+    products already checked, so the rerun re-fired them. Saving per
+    product makes each alert durable the moment it is sent, so a rerun
+    after a kill sees the new state and stays quiet.
+    """
+    for product in products:
+        if is_unverified_placeholder(product):
+            # Placeholder, not a real listing (e.g. the costco.ca
+            # homepage): fetching it every pass only grows a junk fail
+            # streak and burns a request against a page that can never
+            # parse. It becomes tracked the moment someone replaces it
+            # with a real URL and flips verified to true.
+            print(f"[skip] unverified placeholder: {product.get('url')}")
+            continue
+        retailer = product.get("retailer")
+        scraper = scrapers.get(retailer)
+        if scraper is None:
+            print(f"[skip] no scraper for retailer={retailer!r}")
+            continue
+        result = check_one(scraper, product)
+        handle_result(result, state, notifier, baseline)
+        # Durability: persist this product's result AND the notifier's
+        # cooldown stamps now, before moving on to the next product.
+        state["_cooldowns"] = notifier.cooldowns
+        save_fn(state)
+        time.sleep(random.uniform(1.0, 3.0))  # politeness jitter between products
+    n_pruned = prune_stale_fail_streaks(state, {p.get("url") for p in products})
+    if n_pruned:
+        print(f"[pass] pruned {n_pruned} stale fail-streak "
+              f"{'entry' if n_pruned == 1 else 'entries'} (no longer tracked)")
+    n_dropped = drop_placeholder_streaks(state, products)
+    if n_dropped:
+        print(f"[pass] dropped {n_dropped} placeholder fail-streak "
+              f"{'entry' if n_dropped == 1 else 'entries'} (unverified product)")
+    save_fn(state)
+    n_urls = sum(1 for k in state if not k.startswith("_"))
+    print(f"[pass] done — state saved ({n_urls} urls tracked)")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Pokémon TCG stock monitor → Discord")
     ap.add_argument("--once", action="store_true", help="single pass, then exit")
@@ -368,42 +413,11 @@ def main() -> None:
     print(f"[init] tracking {len(products)} products")
     scrapers = {name: cls(pool) for name, cls in SCRAPERS.items()}
 
-    def run_pass() -> None:
-        for product in products:
-            if is_unverified_placeholder(product):
-                # Placeholder, not a real listing (e.g. the costco.ca
-                # homepage): fetching it every pass only grows a junk fail
-                # streak and burns a request against a page that can never
-                # parse. It becomes tracked the moment someone replaces it
-                # with a real URL and flips verified to true.
-                print(f"[skip] unverified placeholder: {product.get('url')}")
-                continue
-            retailer = product.get("retailer")
-            scraper = scrapers.get(retailer)
-            if scraper is None:
-                print(f"[skip] no scraper for retailer={retailer!r}")
-                continue
-            result = check_one(scraper, product)
-            handle_result(result, state, notifier, baseline)
-            time.sleep(random.uniform(1.0, 3.0))  # politeness jitter between products
-        state["_cooldowns"] = notifier.cooldowns  # persist across --once restarts
-        n_pruned = prune_stale_fail_streaks(state, {p.get("url") for p in products})
-        if n_pruned:
-            print(f"[pass] pruned {n_pruned} stale fail-streak "
-                  f"{'entry' if n_pruned == 1 else 'entries'} (no longer tracked)")
-        n_dropped = drop_placeholder_streaks(state, products)
-        if n_dropped:
-            print(f"[pass] dropped {n_dropped} placeholder fail-streak "
-                  f"{'entry' if n_dropped == 1 else 'entries'} (unverified product)")
-        save_state(state)
-        n_urls = sum(1 for k in state if not k.startswith("_"))
-        print(f"[pass] done — state saved ({n_urls} urls tracked)")
-
     if args.once:
-        run_pass()
+        run_pass(products, scrapers, state, notifier, baseline)
         return
     while True:
-        run_pass()
+        run_pass(products, scrapers, state, notifier, baseline)
         time.sleep(poll_interval + random.uniform(0, poll_interval * 0.25))
 
 
