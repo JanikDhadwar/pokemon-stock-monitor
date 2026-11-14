@@ -132,6 +132,38 @@ class TestCostco:
         assert r.in_stock is None
         assert r.error is not None and "403" in r.error
 
+    def test_rate_limit_429_named(self):
+        # Costco has flapped on HTTP 429 since Nov 5, 2026. A bare
+        # "HTTP 429" reads like a hard failure in logs and in the outage
+        # alert's "Latest error" line — name it as the transient
+        # rate-limit it is.
+        scraper = make_scraper(
+            self.cls, "<html><body>Too Many Requests</body></html>",
+            status_code=429)
+        r = scraper.check(PRODUCT)
+        assert r.in_stock is None
+        assert r.error is not None
+        assert "429" in r.error and "rate-limited" in r.error
+
+    def test_rate_limit_429_on_costco_ca(self):
+        # CA subclass inherits check(): same named error, own retailer tag.
+        scraper = make_scraper(
+            SCRAPERS["costco_ca"],
+            "<html><body>Too Many Requests</body></html>", status_code=429)
+        r = scraper.check(dict(PRODUCT, retailer="costco_ca"))
+        assert r.in_stock is None
+        assert r.retailer == "costco_ca"
+        assert r.error is not None and "rate-limited" in r.error
+
+    def test_plain_500_stays_plain(self):
+        # Other non-200s are still reported bare.
+        scraper = make_scraper(
+            self.cls, "<html><body>Server Error</body></html>",
+            status_code=500)
+        r = scraper.check(PRODUCT)
+        assert r.in_stock is None
+        assert r.error == "HTTP 500"
+
     def test_no_ld_json(self):
         r = check(self.cls, "costco_nodata.html")
         assert r.in_stock is None

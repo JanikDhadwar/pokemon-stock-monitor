@@ -24,6 +24,17 @@ class CostcoScraper(BaseScraper):
                 self.retailer, name, url, sku,
                 error=f"HTTP {resp.status_code} — bot wall / sign-in required",
             )
+        if resp.status_code == 429:
+            # Costco has flapped on HTTP 429 since Nov 5, 2026: the in-pass
+            # retries in BaseScraper._get already waited out Retry-After
+            # (capped at 30s), so by the time we see a 429 here the limit
+            # window is still open. A bare "HTTP 429" reads like a hard
+            # failure in cron logs and in the outage alert's "Latest error"
+            # line — name it as the transient rate-limit it is.
+            return ProductResult(
+                self.retailer, name, url, sku,
+                error="HTTP 429 — rate-limited (transient, retries next pass)",
+            )
         if resp.status_code != 200:
             return ProductResult(self.retailer, name, url, sku, error=f"HTTP {resp.status_code}")
         html = resp.text
