@@ -42,10 +42,18 @@ class CostcoScraper(BaseScraper):
         if self._looks_like_botwall(html) or ("akamai" in low and "request blocked" in low):
             return ProductResult(self.retailer, name, url, sku,
                                  error="bot-challenge page served")
+        saw_product = False
         for node in self._product_nodes(html):
+            saw_product = True
             offers = self._first_offer(node.get("offers"))
             in_stock = self._availability_to_bool(offers.get("availability"))
             price = offers.get("price")
+            if in_stock is None and not price:
+                # A page can carry several Product blocks (e.g. a stub for
+                # a related item) before the real one — don't let an empty
+                # first node mask the listing's actual data. Amazon's
+                # parser already skips signal-less nodes the same way.
+                continue
             image = node.get("image")
             if isinstance(image, list):
                 image = image[0] if image else None
@@ -55,5 +63,8 @@ class CostcoScraper(BaseScraper):
                 image_url=image if isinstance(image, str) else None,
                 error=None if in_stock is not None else "availability not exposed (JS/bot wall likely)",
             )
+        if saw_product:
+            return ProductResult(self.retailer, name, url, sku,
+                                 error="Product ld+json present but no stock/price signal")
         return ProductResult(self.retailer, name, url, sku,
                              error="no Product ld+json (page likely bot-walled)")

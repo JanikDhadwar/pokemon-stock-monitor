@@ -169,6 +169,33 @@ class TestCostco:
         assert r.in_stock is None
         assert r.error is not None
 
+    def test_empty_first_product_node_is_skipped(self):
+        # A stub Product block (no offers) before the real listing must
+        # not mask the listing's data — the parser used to return on the
+        # first Product node unconditionally, so a stub first meant an
+        # UNKNOWN result even when the real data was on the same page.
+        r = check(self.cls, "costco_stub_first_node.html")
+        assert r.in_stock is True
+        assert r.price == "39.99"
+        assert r.error is None
+
+    def test_empty_first_node_skipped_on_costco_ca(self):
+        # CA subclass inherits check(): same skip, own retailer tag.
+        scraper = make_scraper(SCRAPERS["costco_ca"],
+                               load("costco_stub_first_node.html"))
+        r = scraper.check(dict(PRODUCT, retailer="costco_ca"))
+        assert r.in_stock is True
+        assert r.price == "39.99"
+        assert r.retailer == "costco_ca"
+
+    def test_all_stub_product_nodes_report_no_signal(self):
+        html = ('<script type="application/ld+json">'
+                '{"@type": "Product", "name": "Stub"}'
+                '</script>')
+        r = make_scraper(self.cls, html).check(PRODUCT)
+        assert r.in_stock is None
+        assert r.error is not None and "no stock/price signal" in r.error
+
 
 # ---------------------------------------------------------------------- amazon
 class TestAmazon:
