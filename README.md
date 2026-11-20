@@ -98,6 +98,15 @@ Each alert is a Discord message with a colored title:
 - 🔴 **OUT OF STOCK** — was available, now gone
 - 🔵 **PRICE DROP** — price went down (shows old → new)
 - 🟡 **NEW LISTING** — a tracked product URL seen for the first time
+- 🟠 **RETAILER OUTAGE** — a listing that used to return real data has now
+  failed 288 checks in a row (about 24 hours at the 5-minute check
+  cadence). It fires **once per outage** and names the last good read, so
+  you hear about a retailer going dark instead of finding out from logs.
+  Listings that never worked (Pokémon Center / Walmart without proxies)
+  never qualify — only ones that previously returned data.
+- 🔄 **RETAILER BACK ONLINE** — the mirror of the outage alert: that
+  listing is returning real data again after an outage was alerted. Also
+  once per outage.
 
 Every alert shows status, price, SKU / product number, retailer, a link to
 the product page, and the product image when available. To avoid spam, the
