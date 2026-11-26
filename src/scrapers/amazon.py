@@ -47,12 +47,27 @@ class AmazonScraper(BaseScraper):
         for node in self._product_nodes(html):
             offers = self._first_offer(node.get("offers"))
             in_stock = self._availability_to_bool(offers.get("availability"))
-            price = offers.get("price") or self._display_price(html)
-            if in_stock is not None or price:
-                return ProductResult(
-                    self.retailer, name, url, sku, in_stock=in_stock,
-                    price=str(price) if price else None,
-                )
+            price = offers.get("price")
+            if in_stock is None and not price:
+                # A page can carry several Product blocks (e.g. a stub for
+                # a related item) before the real one — don't let an empty
+                # first node mask the listing's actual data. The old code
+                # fell back to the page-wide displayPrice blob here, so a
+                # stub node could return a stranger's price (a carousel
+                # item's $9.99) with in_stock=None and no error — which
+                # handle_result() treats as a success: it clears the fail
+                # streak, overwrites last-known-good state, and can even
+                # fire a bogus price-drop alert. Costco's parser skips
+                # signal-less nodes the same way (Nov 17); Amazon now does
+                # too, and only consults displayPrice for a node that
+                # already carries a real signal.
+                continue
+            if not price:
+                price = self._display_price(html)
+            return ProductResult(
+                self.retailer, name, url, sku, in_stock=in_stock,
+                price=str(price) if price else None,
+            )
         match = AVAILABILITY_RE.search(html)
         if match:
             text = TAG_RE.sub("", match.group(1)).strip().lower()

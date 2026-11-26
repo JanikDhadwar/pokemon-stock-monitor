@@ -252,6 +252,39 @@ class TestAmazon:
         assert r.in_stock is None
         assert r.error is not None
 
+    def test_stub_first_node_skipped_not_junk_priced(self):
+        # A stub Product block (no offers) before the real listing, with a
+        # page-wide displayPrice blob from a carousel item: the parser must
+        # skip the stub and return the real listing — it used to return
+        # in_stock=None with the stranger's $9.99 and no error, which the
+        # monitor treats as a success (clears the fail streak, overwrites
+        # last-known-good state, can fire a bogus price-drop alert).
+        r = check(self.cls, "amazon_stub_first_node.html")
+        assert r.in_stock is True
+        assert r.price == "269.31"
+        assert r.error is None
+
+    def test_stub_first_node_skipped_on_amazon_ca(self):
+        # CA subclass inherits check(): same skip, own retailer tag.
+        scraper = make_scraper(SCRAPERS["amazon_ca"],
+                               load("amazon_stub_first_node.html"))
+        r = scraper.check(dict(PRODUCT, retailer="amazon_ca"))
+        assert r.in_stock is True
+        assert r.price == "269.31"
+        assert r.retailer == "amazon_ca"
+
+    def test_all_stub_nodes_with_stray_display_price_report_no_signal(self):
+        # Stub-only page that still carries a displayPrice blob somewhere:
+        # a stranger's price with no availability signal is not a result.
+        html = ('<script>var x = {"displayPrice": "$9.99"};</script>'
+                '<script type="application/ld+json">'
+                '{"@type": "Product", "name": "Stub"}'
+                '</script>')
+        r = make_scraper(self.cls, html).check(PRODUCT)
+        assert r.in_stock is None
+        assert r.price is None
+        assert r.error is not None
+
 
 # ------------------------------------------------- never raises, all scrapers
 @pytest.mark.parametrize("retailer,cls", sorted(SCRAPERS.items()))
